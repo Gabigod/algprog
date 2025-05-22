@@ -27,6 +27,26 @@ int carrega_mapa(char mapa[LINHAS][COLUNAS], char* nome){
 	return 0;
 }
 
+void desenha_mapa(char mapa[LINHAS][COLUNAS]){
+	for(int i = 0; i < LINHAS; i++){
+		for(int j = 0; j < COLUNAS; j++){
+			switch(mapa[i][j]){
+				case 'P':
+					DrawRectangle(j * (LARGURA / COLUNAS), i * (ALTURA / LINHAS), (LARGURA / COLUNAS), (ALTURA / LINHAS), BROWN);
+					break;
+				case 'V':
+					DrawRectangle(j * (LARGURA / COLUNAS), i * (ALTURA / LINHAS), (LARGURA / COLUNAS), (ALTURA / LINHAS), MAROON);
+					break;
+				case 'E':
+					DrawRectangle(j * (LARGURA / COLUNAS), i * (ALTURA / LINHAS), (LARGURA / COLUNAS), (ALTURA / LINHAS), GRAY);
+					break;
+				default:
+					break;
+			}
+		}
+	}
+}
+
 void imprime_matriz(char matriz[LINHAS][COLUNAS]){
 	for(int i = 0; i < LINHAS; i++){
 		for(int j = 0; j < COLUNAS; j++){
@@ -37,10 +57,18 @@ void imprime_matriz(char matriz[LINHAS][COLUNAS]){
 }
 
 int main(void){
-	char mapa[LINHAS][COLUNAS] = {0};
+	char mapa[LINHAS][COLUNAS];
 	
+	InitWindow(LARGURA,ALTURA + ALTURA_BARRA,"ZINF");
+
 	carrega_mapa(mapa, "mapa.txt");
+	while(!WindowShouldClose()){
+		BeginDrawing();
+		ClearBackground((Color){255,255,255});
+		desenha_mapa(mapa);
+		EndDrawing();
+	}
 	//printf("%c",mapa[15][23]);
-	imprime_matriz(mapa);
+	//imprime_matriz(mapa);
 	return 0;
 }
