@@ -36,6 +36,7 @@ typedef struct {
     char orientacao;
     int pts;
     int vida;
+    float tempoProximoMovimento;
 }monstro;
 
 
@@ -50,7 +51,7 @@ typedef struct {
 
 // ------------------ FUNCOES ----------------
 // ---------- FUNCOES DE HIGHSCORES ----------
-//verifica coleta de vida
+//verifica se o jogador passou em cima de uma vida
 void verificaVidaColetada(char mapa[LINHAS][COLUNAS], personagem *jogador) {
     int lin = ((*jogador).jogadorLoc.y - ALTURA_BARRA) / LADO;
     int col = (*jogador).jogadorLoc.x / LADO;
@@ -78,7 +79,7 @@ void carregarHighscores(Highscore highscores[MAX_SCORES]) {
     }
 }
 
-//
+// Verifica se o jogador passou em cima da espada
 void verificaEspadaColetada(char mapa[LINHAS][COLUNAS], personagem *jogador) {
     int lin = ((*jogador).jogadorLoc.y - ALTURA_BARRA) / LADO;
     int col = (*jogador).jogadorLoc.x / LADO;
@@ -88,6 +89,7 @@ void verificaEspadaColetada(char mapa[LINHAS][COLUNAS], personagem *jogador) {
         mapa[lin][col] = '.';
     }
 }
+
 // Salva os highscores no arquivo .txt
 void salvarHighscores(Highscore highscores[MAX_SCORES]) {
     FILE *arquivo = fopen("highscores.txt", "w");
@@ -305,6 +307,9 @@ int iniciaMonstros(char mapa[LINHAS][COLUNAS], monstro mobs[]){
             if(mapa[i][j] == 'M'){
                 mobs[k].monstroLoc.x = j * LADO;
                 mobs[k].monstroLoc.y = i * LADO + ALTURA_BARRA;
+                mobs[k].orientacao = 'S';
+                mobs[k].vida = 1;
+                mobs[k].tempoProximoMovimento = 0; //pode mover imediatamente
                 k++;
                 mapa[i][j] = '.';
             }
@@ -314,19 +319,115 @@ int iniciaMonstros(char mapa[LINHAS][COLUNAS], monstro mobs[]){
 }
 
 // Atualiza a posicao dos monstros
-int atualizaMonstros(char mapa[LINHAS][COLUNAS], monstro mobs[MONSTROS], int len){
-    for(int i = 0; i < len; i++){
-        int *x = &mobs[i].monstroLoc.x;
-        int *y = &mobs[i].monstroLoc.y;
+int atualizaMonstros(char mapa[LINHAS][COLUNAS], monstro mobs[MONSTROS], int len) {
+    float deltaTime = GetFrameTime();
+    for (int i = 0; i < len; i++) {
 
-        int dx = sorteia(-1, 1);
-        int dy = sorteia(-1, 1);
-        if(!deveMover(mapa, *x, *y, dx, dy)){
-            move(dx, dy, x, y);
+        if(mobs[i].vida <= 0) continue;
+
+        mobs[i].tempoProximoMovimento -= deltaTime;
+
+        if (mobs[i].tempoProximoMovimento <= 0.0f) {
+            mobs[i].tempoProximoMovimento = 0.3f;
+        
+            // Gera uma direcao aleatoria
+            int direcao = sorteia(0, 5); // 0: Cima, 1: Baixo, 2: Esquerda, 3: Direita, 4: Parado
+
+            int dx = 0; // Deslocamento em X
+            int dy = 0; // Deslocamento em Y
+
+            // Calcula o deslocamento em pixels (múltiplos de LADO)
+            switch (direcao) {
+                case 0: // Cima
+                    dy = -LADO;
+                    mobs[i].orientacao = 'N';
+                    break;
+                case 1: // Baixo
+                    dy = LADO;
+                    mobs[i].orientacao = 'S';
+                    break;
+                case 2: // Esquerda
+                    dx = -LADO;
+                    mobs[i].orientacao = 'O';
+                    break;
+                case 3: // Direita
+                    dx = LADO;
+                    mobs[i].orientacao = 'L';
+                    break;
+                case 4: // Parado (dx=0, dy=0)
+                    // Não faz nada, já estão em zero
+                    break;
+            }
+
+            // Verifica se o monstro PODE MOVER para a nova posicao
+            if (deveMover(mapa, mobs[i].monstroLoc.x, mobs[i].monstroLoc.y, dx, dy) == 0) {
+                move(dx, dy, &mobs[i].monstroLoc.x, &mobs[i].monstroLoc.y);
+            }
         }
     }
     return 0;
 }
+
+// Verifica interacoes entre os mobs e o jogador
+void VerificarInteracoes(personagem *jogador, monstro mobs[], int numMonstros, vetor posicaoInicial) {
+    
+    // Cria um retangulo de colisao para o jogador
+    Rectangle recJogador = { jogador->jogadorLoc.x, jogador->jogadorLoc.y, LADO, LADO };
+
+    // --- 1. VERIFICA SE MONSTRO ENCOSTA NO JOGADOR ---
+    for (int i = 0; i < numMonstros; i++) {
+        // Ignora monstros mortos
+        if (mobs[i].vida <= 0) continue;
+
+        Rectangle recMonstro = { mobs[i].monstroLoc.x, mobs[i].monstroLoc.y, LADO, LADO };
+
+        // Se o jogador colidir com um monstro...
+        if (CheckCollisionRecs(recJogador, recMonstro)) {
+            jogador->vida--; // Perde uma vida
+            jogador->jogadorLoc = posicaoInicial; // Volta para o inicio do mapa
+
+            // Pausa pequena para o jogador entender o que aconteceu
+            WaitTime(0.5); 
+            break; // Sai do loop para evitar perder multiplas vidas de uma vez
+        }
+    }
+
+    // --- 2. VERIFICA SE O JOGADOR ATACA UM MONSTRO ---
+    // So acontece se a tecla J for pressionada e o jogador tiver a espada
+    if (IsKeyPressed(KEY_J) && jogador->espada == 1) {
+        // Calcula a hitbox da espada (3 quadrados a frente do jogador)
+        int dx = 0, dy = 0;
+        switch (jogador->orientacao) {
+            case 'N': dy = -1; break;
+            case 'S': dy = 1; break;
+            case 'L': dx = 1; break;
+            case 'O': dx = -1; break;
+        }
+
+        // Verifica cada um dos 3 quadrados da hitbox da espada
+        for (int i = 1; i <= 3; i++) {
+            Rectangle recEspada = {
+                jogador->jogadorLoc.x + i * dx * LADO,
+                jogador->jogadorLoc.y + i * dy * LADO,
+                LADO, LADO
+            };
+
+            // Compara a hitbox com cada monstro vivo
+            for (int k = 0; k < numMonstros; k++) {
+                if (mobs[k].vida <= 0) continue;
+
+                Rectangle recMonstro = { mobs[k].monstroLoc.x, mobs[k].monstroLoc.y, LADO, LADO };
+
+                if (CheckCollisionRecs(recEspada, recMonstro)) {
+                    mobs[k].vida = 0;   // Monstro morre
+                    jogador->pts += 10; // Ganha 10 pontos
+                }
+            }
+        }
+    }
+}
+
+
 // ---------- FUNCAO PRINCIPAL ----------
 int main(void) {
     const int screenWidth = LARGURA;
@@ -359,6 +460,7 @@ int main(void) {
 
     char mapa[LINHAS][COLUNAS];
     personagem jogador;
+    vetor posicaoInicial;
     int pontuacaoSalva = 0;
 
     // ---------- LOOP PRINCIPAL ----------
@@ -369,7 +471,7 @@ int main(void) {
         // Troca entre telas
         switch (currentScreen) {
             case MENU:
-                DrawRectangle(0, 0, screenWidth, ALTURA_BARRA, BLACK);
+                DrawRectangle(0, 0, screenWidth, ALTURA_BARRA, WHITE);
                 DrawText("MENU PRINCIPAL", 400, 100, 30, BLACK);
                 DrawText("1 - Jogar", 450, 160, 20, DARKGRAY);
                 DrawText("2 - Ver Highscores", 450, 200, 20, DARKGRAY);
@@ -380,8 +482,9 @@ int main(void) {
                 jogador.vida = 3;
                 jogador.espada = 0;
                 jogador.orientacao = 'S';
-                jogador.pts = GetRandomValue(0, 999); // Exemplo de pontos
+                jogador.pts = 0; // Exemplo de pontos
                 IniciaPosicaoJogador(mapa, &jogador);
+                posicaoInicial = jogador.jogadorLoc;
                 numMonstrosAtivos = iniciaMonstros(mapa, mobs); // Inicializa os monstros aqui!
                 pontuacaoSalva = 0;
                 currentScreen = GAMEPLAY;
@@ -393,41 +496,61 @@ int main(void) {
                 break;
 
             case GAMEPLAY:
-                DrawRectangle(0, 0, screenWidth, ALTURA_BARRA, BLACK); // fundo preto do topo
-
-                char texto[50];
-                sprintf(texto, "Vida: %d   Pontos: %d", jogador.vida, jogador.pts);
-                DrawText(texto, 20, 20, 20, WHITE); // desenha texto branco com vida e pontos
-
-                IniciaMapa(mapa, texturaParede, texturaChao, texturaVida, texturaEspada);
-                AtualizaJogador(&jogador, mapa, jogadorNorte, jogadorSul, jogadorLeste, jogadorOeste);
-                verificaVidaColetada(mapa, &jogador);
-                verificaEspadaColetada(mapa, &jogador);
-
-                atualizaMonstros(mapa, mobs, numMonstrosAtivos);
-
-                // Loop para desenhar cada monstro
-                for(int i = 0; i < numMonstrosAtivos; i++) {
-                    Texture2D texturaMonstroAtual;
-                    // Se tiver lagica de orientacao para monstros, implemente um switch aqui.
-                    texturaMonstroAtual = texturaMonstroSul; 
-                    float escalaMonstro = (float)LADO / texturaMonstroAtual.width;
-
-                    Vector2 posicaoMonstro = { (float)mobs[i].monstroLoc.x, (float)mobs[i].monstroLoc.y };
-                    //Vector2 origemMonstro = { 0.0f, 0.0f };
-                    float rotacaoMonstro = 0.0f;
-                    Color tinturaMonstro = WHITE;
-
-                    DrawTextureEx(texturaMonstroAtual, posicaoMonstro, rotacaoMonstro, escalaMonstro, tinturaMonstro);
-                }
-
-                if (IsKeyPressed(KEY_ESCAPE)) {
-                    if (!pontuacaoSalva) {
+                if (jogador.vida <= 0) {
+                    if (!pontuacaoSalva) {  // Salva a pontuacao se ainda nao foi salva
                         inserirHighscore("Jogador", jogador.pts, highscores);
                         salvarHighscores(highscores);
                         pontuacaoSalva = 1;
                     }
-                    currentScreen = MENU;
+                    // Mostra a tela de Game Over
+                    ClearBackground(BLACK);
+                    DrawText("GAME OVER", LARGURA / 2 - MeasureText("GAME OVER", 60) / 2, ALTURA / 2 - 40, 60, RED);
+                    DrawText("Pressione ENTER para voltar ao Menu", LARGURA / 2 - MeasureText("Pressione ENTER para voltar ao Menu", 20) / 2, ALTURA / 2 + 40, 20, WHITE);
+
+                    if (IsKeyPressed(KEY_ENTER)) {
+                        currentScreen = MENU;
+                    }
+                }else{
+                    DrawRectangle(0, 0, screenWidth, ALTURA_BARRA, BLACK); // fundo preto do topo
+
+                    char texto[50];
+                    sprintf(texto, "Vida: %d   Pontos: %d", jogador.vida, jogador.pts);
+                    DrawText(texto, 20, 20, 20, WHITE); // desenha texto branco com vida e pontos
+
+                    IniciaMapa(mapa, texturaParede, texturaChao, texturaVida, texturaEspada);
+                    AtualizaJogador(&jogador, mapa, jogadorNorte, jogadorSul, jogadorLeste, jogadorOeste);
+                    verificaVidaColetada(mapa, &jogador);
+                    verificaEspadaColetada(mapa, &jogador);
+
+                    atualizaMonstros(mapa, mobs, numMonstrosAtivos);
+
+                    // Loop para desenhar cada monstro
+                    for(int i = 0; i < numMonstrosAtivos; i++) {
+                        if(mobs[i].vida > 0){
+                            Texture2D texturaMonstroAtual;
+                            // Se tiver lagica de orientacao para monstros, implemente um switch aqui.
+                            texturaMonstroAtual = texturaMonstroSul; 
+                            float escalaMonstro = (float)LADO / texturaMonstroAtual.width;
+
+                            Vector2 posicaoMonstro = { (float)mobs[i].monstroLoc.x, (float)mobs[i].monstroLoc.y };
+                            //Vector2 origemMonstro = { 0.0f, 0.0f };
+                            float rotacaoMonstro = 0.0f;
+                            Color tinturaMonstro = WHITE;
+
+                            DrawTextureEx(texturaMonstroAtual, posicaoMonstro, rotacaoMonstro, escalaMonstro, tinturaMonstro);
+                        }
+                    }
+
+                    VerificarInteracoes(&jogador, mobs, numMonstrosAtivos, posicaoInicial);
+
+                    if (IsKeyPressed(KEY_ESCAPE)) {
+                        if (!pontuacaoSalva) {
+                            inserirHighscore("Jogador", jogador.pts, highscores);
+                            salvarHighscores(highscores);
+                            pontuacaoSalva = 1;
+                        }
+                        currentScreen = MENU;
+                    }
                 }
                 break;
 
@@ -439,8 +562,8 @@ int main(void) {
                     sprintf(texto, "%d. %s - %d", i + 1, highscores[i].nome, highscores[i].pontos);
                     DrawText(texto, 400, 130 + i * 30, 20, BLACK);
                 }
-                DrawText("Pressione ESC para voltar", 400, 350, 20, RED);
-                if (IsKeyPressed(KEY_ESCAPE)) currentScreen = MENU;
+                DrawText("Pressione ENTER para voltar", 400, 350, 20, RED);
+                if (IsKeyPressed(KEY_ENTER)) currentScreen = MENU;
                 break;
 
             case EXIT:
