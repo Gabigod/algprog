@@ -3,7 +3,7 @@
 #include <stdio.h>     // Entrada e saida padrao (printf, scanf, FILE, etc.)
 #include <stdlib.h>    // Funcoes gerais (como rand, malloc)
 #include <string.h>    // Para manipulacao de strings
-#include <time.h>     // Para utilizar unix time stamp
+#include <time.h>
 
 // ---------- CONSTANTES ----------
 #define LARGURA 1200         // Largura da janela
@@ -13,7 +13,7 @@
 #define COLUNAS 24           // Quantidade de colunas do mapa
 #define LADO (LARGURA / COLUNAS) // Tamanho de cada celula do mapa
 #define MAX_SCORES 5         // Quantos highscores serao armazenados
-#define MONSTROS 10          // Quantos monstros podem ter por mapa   
+#define MONSTROS 10          // Quantos monstros podem ter por mapa
 
 // ---------- STRUCTS ----------
 // Guarda uma posicao no mapa (coordenadas)
@@ -35,7 +35,7 @@ typedef struct {
     vetor monstroLoc;
     char orientacao;
     int pts;
-    int vida; 
+    int vida;
 }monstro;
 
 
@@ -50,6 +50,16 @@ typedef struct {
 
 // ------------------ FUNCOES ----------------
 // ---------- FUNCOES DE HIGHSCORES ----------
+//verifica coleta de vida
+void verificaVidaColetada(char mapa[LINHAS][COLUNAS], personagem *jogador) {
+    int lin = ((*jogador).jogadorLoc.y - ALTURA_BARRA) / LADO;
+    int col = (*jogador).jogadorLoc.x / LADO;
+
+    if (mapa[lin][col] == 'V') {
+        (*jogador).vida++;
+        mapa[lin][col] = '.'; // Remove a vida do mapa
+    }
+}
 
 // Carrega highscores de um arquivo .txt
 void carregarHighscores(Highscore highscores[MAX_SCORES]) {
@@ -68,6 +78,16 @@ void carregarHighscores(Highscore highscores[MAX_SCORES]) {
     }
 }
 
+//
+void verificaEspadaColetada(char mapa[LINHAS][COLUNAS], personagem *jogador) {
+    int lin = ((*jogador).jogadorLoc.y - ALTURA_BARRA) / LADO;
+    int col = (*jogador).jogadorLoc.x / LADO;
+
+    if (mapa[lin][col] == 'E') {
+        (*jogador).espada = 1;
+        mapa[lin][col] = '.';
+    }
+}
 // Salva os highscores no arquivo .txt
 void salvarHighscores(Highscore highscores[MAX_SCORES]) {
     FILE *arquivo = fopen("highscores.txt", "w");
@@ -123,13 +143,42 @@ int carrega_mapa(char mapa[LINHAS][COLUNAS], char* nome) {
 }
 
 // Desenha os elementos do mapa na tela com base nos caracteres do arquivo
-void IniciaMapa(char mapa[LINHAS][COLUNAS]) {
+void IniciaMapa(char mapa[LINHAS][COLUNAS], Texture2D texturaParede, Texture2D texturaChao, Texture2D texturaVida, Texture2D texturaEspada) {
     for (int i = 0; i < LINHAS; i++) {
         for (int j = 0; j < COLUNAS; j++) {
+            int x = j * LADO;
+            int y = i * LADO + ALTURA_BARRA;
+
+            // Define o ponto de destino para DrawTextureEx
+            Vector2 posicao = { (float)x, (float)y };
+
+            // Define a escala para que a textura tenha o tamanho de LADO x LADO
+            // Assumimos que as texturas de itens e mapa sao quadradas (largura == altura)
+            float escalaChao = (float)LADO / texturaChao.width; // Escala baseada na largura da textura de chao
+            float escalaParede = (float)LADO / texturaParede.width; // Escala baseada na largura da textura de parede
+            float escalaVida = (float)LADO / texturaVida.width; // Escala baseada na largura da textura de vida
+            float escalaEspada = (float)LADO / texturaEspada.width; // Escala baseada na largura da textura de espada
+
+            // Ponto de origem para rotacao (0,0 para canto superior esquerdo)
+            //Vector2 origem = { 0.0f, 0.0f };
+            float rotacao = 0.0f;
+            Color tintura = WHITE;
+
             switch (mapa[i][j]) {
-                case 'P': DrawRectangle(j * LADO, i * LADO + ALTURA_BARRA, LADO, LADO, BROWN); break;
-                case 'V': DrawRectangle(j * LADO, i * LADO + ALTURA_BARRA, LADO, LADO, MAROON); break;
-                case 'E': DrawRectangle(j * LADO, i * LADO + ALTURA_BARRA, LADO, LADO, GRAY); break;
+                case 'P':
+                    DrawTextureEx(texturaParede, posicao, rotacao, escalaParede, tintura);
+                    break;
+                case '.':
+                    DrawTextureEx(texturaChao, posicao, rotacao, escalaChao, tintura);
+                    break;
+                case 'V':
+                    DrawTextureEx(texturaChao, posicao, rotacao, escalaChao, tintura); // desenha chao atras
+                    DrawTextureEx(texturaVida, posicao, rotacao, escalaVida, tintura);
+                    break;
+                case 'E':
+                    DrawTextureEx(texturaChao, posicao, rotacao, escalaChao, tintura); // desenha chao atras
+                    DrawTextureEx(texturaEspada, posicao, rotacao, escalaEspada, tintura);
+                    break;
             }
         }
     }
@@ -142,6 +191,7 @@ int IniciaPosicaoJogador(char matriz[LINHAS][COLUNAS], personagem* jogador) {
             if (matriz[i][j] == 'J') {
                 jogador->jogadorLoc.x = j * LADO;
                 jogador->jogadorLoc.y = i * LADO + ALTURA_BARRA;
+                matriz[i][j] = '.';
                 return 0;
             }
         }
@@ -172,17 +222,78 @@ void move(int dx, int dy, int *x, int *y) {
 }
 
 // Le o teclado e atualiza a posicao do jogador
-int AtualizaJogador(personagem* jogador, char matriz[LINHAS][COLUNAS]) {
-    if (IsKeyPressed(KEY_RIGHT) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, LADO, 0))
-        move(LADO, 0, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
-    if (IsKeyPressed(KEY_LEFT) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, -LADO, 0))
-        move(-LADO, 0, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
-    if (IsKeyPressed(KEY_UP) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, 0, -LADO))
-        move(0, -LADO, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
-    if (IsKeyPressed(KEY_DOWN) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, 0, LADO))
-        move(0, LADO, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
+int AtualizaJogador(personagem* jogador, char matriz[LINHAS][COLUNAS],
+                    Texture2D jogadorNorte, Texture2D jogadorSul,
+                    Texture2D jogadorLeste, Texture2D jogadorOeste) {
 
-    DrawRectangle(jogador->jogadorLoc.x, jogador->jogadorLoc.y, LADO, LADO, GREEN);
+    if (IsKeyPressed(KEY_RIGHT) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, LADO, 0)) {
+        move(LADO, 0, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
+        jogador->orientacao = 'L';
+    }
+    if (IsKeyPressed(KEY_LEFT) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, -LADO, 0)) {
+        move(-LADO, 0, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
+        jogador->orientacao = 'O';
+    }
+    if (IsKeyPressed(KEY_UP) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, 0, -LADO)) {
+        move(0, -LADO, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
+        jogador->orientacao = 'N';
+    }
+    if (IsKeyPressed(KEY_DOWN) && !deveMover(matriz, jogador->jogadorLoc.x, jogador->jogadorLoc.y, 0, LADO)) {
+        move(0, LADO, &jogador->jogadorLoc.x, &jogador->jogadorLoc.y);
+        jogador->orientacao = 'S';
+    }
+
+    // Seleciona a textura de acordo com a direcao
+    Texture2D texturaAtual;
+    float escalaJogador; // Declara a variavel de escala para o jogador
+
+    switch (jogador->orientacao) {
+        case 'N': 
+            texturaAtual = jogadorNorte; 
+            escalaJogador = 0.7 * (float)LADO / jogadorNorte.width; // Calcula a escala para a textura Norte
+            break;
+        case 'S': 
+            texturaAtual = jogadorSul; 
+            escalaJogador = 0.7 * (float)LADO / jogadorSul.width; // Calcula a escala para a textura Sul
+            break;
+        case 'L': 
+            texturaAtual = jogadorLeste; 
+            escalaJogador = 0.6 * (float)LADO / jogadorLeste.width; // Calcula a escala para a textura Leste
+            break;
+        case 'O': 
+            texturaAtual = jogadorOeste; 
+            escalaJogador = 0.6 * (float)LADO / jogadorOeste.width; // Calcula a escala para a textura Oeste
+            break;
+        default: // Caso padrao para evitar usar textura nao inicializada
+            texturaAtual = jogadorSul; // ou qualquer outra textura padrao
+            escalaJogador = 0.7 * (float)LADO / jogadorSul.width;
+            break;
+    }
+    
+    // Desenha a textura do jogador com a escala calculada
+    Vector2 posicaoJogador = { (float)jogador->jogadorLoc.x, (float)jogador->jogadorLoc.y };
+    //Vector2 origemJogador = { 0.0f, 0.0f }; // Canto superior esquerdo como origem
+    float rotacaoJogador = 0.0f;
+    Color tinturaJogador = WHITE;
+
+    DrawTextureEx(texturaAtual, posicaoJogador, rotacaoJogador, escalaJogador, tinturaJogador);
+
+    // Hitbox da espada (nao precisa de mudanca, pois e um retangulo desenhado diretamente)
+    if (jogador->espada == 1) {
+        int dx = 0, dy = 0;
+        switch (jogador->orientacao) {
+            case 'N': dy = -1; break;
+            case 'S': dy = 1; break;
+            case 'L': dx = 1; break;
+            case 'O': dx = -1; break;
+        }
+        for (int i = 1; i <= 3; i++) {
+            int x = jogador->jogadorLoc.x + i * dx * LADO;
+            int y = jogador->jogadorLoc.y + i * dy * LADO;
+            DrawRectangle(x, y, LADO, LADO, Fade(RED, 0.4f)); // hitbox com transparencia
+        }
+    }
+
     return 0;
 }
 
@@ -194,10 +305,8 @@ int iniciaMonstros(char mapa[LINHAS][COLUNAS], monstro mobs[]){
             if(mapa[i][j] == 'M'){
                 mobs[k].monstroLoc.x = j * LADO;
                 mobs[k].monstroLoc.y = i * LADO + ALTURA_BARRA;
-                mobs[k].pts = sorteia(1, 10);
-                mobs[k].vida = 1;
                 k++;
-
+                mapa[i][j] = '.';
             }
         }
     }
@@ -215,8 +324,6 @@ int atualizaMonstros(char mapa[LINHAS][COLUNAS], monstro mobs[MONSTROS], int len
         if(!deveMover(mapa, *x, *y, dx, dy)){
             move(dx, dy, x, y);
         }
-
-        DrawRectangle(mobs[i].monstroLoc.x, mobs[i].monstroLoc.y, LADO, LADO, BLACK);
     }
     return 0;
 }
@@ -225,14 +332,28 @@ int main(void) {
     const int screenWidth = LARGURA;
     const int screenHeight = ALTURA + ALTURA_BARRA;
     monstro mobs[MONSTROS] = {0};
-    int qtdMonstros = 0;
+    int numMonstrosAtivos = 0;
     Highscore highscores[MAX_SCORES]; // Vetor que guarda os 5 melhores scores
 
     carregarHighscores(highscores); // Carrega os highscores no inicio
-    srand(time(NULL));  // Define a seed da função rand como unix time stamp
+    srand(time(NULL));  // Define a seed da funcao rand como unix time stamp
 
     InitWindow(screenWidth, screenHeight, "ZINF");
     SetTargetFPS(60);  // Limita a 60 frames por segundo
+    Texture2D jogadorSul = LoadTexture("sprites/jogador-sul.png");
+    Texture2D jogadorNorte = LoadTexture("sprites/jogador-norte.png");
+    Texture2D jogadorLeste = LoadTexture("sprites/jogador-leste.png");
+    Texture2D jogadorOeste = LoadTexture("sprites/jogador-oeste.png");
+
+    Texture2D texturaEspada = LoadTexture("sprites/espada.png");
+    Texture2D texturaVida = LoadTexture("sprites/vida.png");
+    Texture2D texturaParede = LoadTexture("sprites/parede.png");
+    Texture2D texturaChao = LoadTexture("sprites/chao.png");
+
+    //Texture2D texturaMonstroNorte = LoadTexture("sprites/monstro-norte.png");
+    Texture2D texturaMonstroSul = LoadTexture("sprites/monstro-sul.png");
+    //Texture2D texturaMonstroLeste = LoadTexture("sprites/monstro-leste.png");
+    //Texture2D texturaMonstroOeste = LoadTexture("sprites/monstro-oeste.png");
 
     GameScreen currentScreen = MENU;  // Comeca no menu
 
@@ -255,15 +376,15 @@ int main(void) {
                 DrawText("3 - Sair", 450, 240, 20, DARKGRAY);
 
                 if (IsKeyPressed(KEY_ONE)) {
-                    carrega_mapa(mapa, "mapa.txt");
-                    jogador.vida = 3;
-                    jogador.espada = 0;
-                    jogador.orientacao = 'S';
-                    jogador.pts = GetRandomValue(0, 999); // Exemplo de pontos
-                    IniciaPosicaoJogador(mapa, &jogador);
-                    qtdMonstros = iniciaMonstros(mapa, mobs);
-                    pontuacaoSalva = 0;
-                    currentScreen = GAMEPLAY;
+                carrega_mapa(mapa, "mapa.txt");
+                jogador.vida = 3;
+                jogador.espada = 0;
+                jogador.orientacao = 'S';
+                jogador.pts = GetRandomValue(0, 999); // Exemplo de pontos
+                IniciaPosicaoJogador(mapa, &jogador);
+                numMonstrosAtivos = iniciaMonstros(mapa, mobs); // Inicializa os monstros aqui!
+                pontuacaoSalva = 0;
+                currentScreen = GAMEPLAY;
                 } else if (IsKeyPressed(KEY_TWO)) {
                     currentScreen = HIGHSCORES;
                 } else if (IsKeyPressed(KEY_THREE)) {
@@ -272,11 +393,34 @@ int main(void) {
                 break;
 
             case GAMEPLAY:
-                DrawRectangle(0, 0, screenWidth, ALTURA_BARRA, BLACK);
-                IniciaMapa(mapa);
-                AtualizaJogador(&jogador, mapa);
-                atualizaMonstros(mapa, mobs, qtdMonstros);
-                // ESC retorna ao menu e salva pontuacao
+                DrawRectangle(0, 0, screenWidth, ALTURA_BARRA, BLACK); // fundo preto do topo
+
+                char texto[50];
+                sprintf(texto, "Vida: %d   Pontos: %d", jogador.vida, jogador.pts);
+                DrawText(texto, 20, 20, 20, WHITE); // desenha texto branco com vida e pontos
+
+                IniciaMapa(mapa, texturaParede, texturaChao, texturaVida, texturaEspada);
+                AtualizaJogador(&jogador, mapa, jogadorNorte, jogadorSul, jogadorLeste, jogadorOeste);
+                verificaVidaColetada(mapa, &jogador);
+                verificaEspadaColetada(mapa, &jogador);
+
+                atualizaMonstros(mapa, mobs, numMonstrosAtivos);
+
+                // Loop para desenhar cada monstro
+                for(int i = 0; i < numMonstrosAtivos; i++) {
+                    Texture2D texturaMonstroAtual;
+                    // Se tiver lagica de orientacao para monstros, implemente um switch aqui.
+                    texturaMonstroAtual = texturaMonstroSul; 
+                    float escalaMonstro = (float)LADO / texturaMonstroAtual.width;
+
+                    Vector2 posicaoMonstro = { (float)mobs[i].monstroLoc.x, (float)mobs[i].monstroLoc.y };
+                    //Vector2 origemMonstro = { 0.0f, 0.0f };
+                    float rotacaoMonstro = 0.0f;
+                    Color tinturaMonstro = WHITE;
+
+                    DrawTextureEx(texturaMonstroAtual, posicaoMonstro, rotacaoMonstro, escalaMonstro, tinturaMonstro);
+                }
+
                 if (IsKeyPressed(KEY_ESCAPE)) {
                     if (!pontuacaoSalva) {
                         inserirHighscore("Jogador", jogador.pts, highscores);
@@ -306,6 +450,12 @@ int main(void) {
 
         EndDrawing(); // Termina o frame
     }
+    UnloadTexture(texturaParede);
+    UnloadTexture(texturaChao);
+    UnloadTexture(jogadorNorte);
+    UnloadTexture(jogadorSul);
+    UnloadTexture(jogadorLeste);
+    UnloadTexture(jogadorOeste);
 
     CloseWindow(); // Fecha ao sair do loop
     return 0;
