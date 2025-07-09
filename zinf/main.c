@@ -448,7 +448,7 @@ int main(void) {
                     currentScreen = ENTER_HIGHSCORE;
                 } else {
                     DrawRectangle(0, 0, LARGURA, ALTURA_BARRA, BLACK);
-                    DrawText(TextFormat("Vida: %d | Pontos: %d | Fase: %d", jogador.vida, jogador.pts, faseAtual + 1), 20, 20, 20, WHITE);
+                    DrawText(TextFormat("Vida: %d | Pontos: %d | Fase: %d", jogador.vida, jogador.pts, faseAtual), 20, 20, 20, WHITE);
 
                     IniciaMapa(mapa, texturaParede, texturaChao, texturaVida, texturaEspada);
                     AtualizaJogador(&jogador, mapa, jogadorNorte, jogadorSul, jogadorLeste, jogadorOeste);
